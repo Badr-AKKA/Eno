@@ -35,12 +35,24 @@
 			</ComponentGroup>
 			<CodeLists></CodeLists>
 			<Variables>
-				<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+				<xsl:apply-templates select="enopogues:get-variables($source-context)" mode="source">
 					<xsl:with-param name="driver" select="eno:append-empty-element('driver-VariableScheme', .)" tunnel="yes"/>
 					<xsl:with-param name="language" select="$languages[1]" tunnel="yes"/>
 				</xsl:apply-templates>
 			</Variables>
+			<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+				<xsl:with-param name="driver" select="eno:append-empty-element('driver-Loop', .)" tunnel="yes"/>
+				<xsl:with-param name="language" select="$languages[1]" tunnel="yes"/>
+			</xsl:apply-templates>
 		</Questionnaire>
+	</xsl:template>
+
+	<xsl:template match="driver-Global//Loop" mode="model">
+		<xsl:param name="source-context" as="item()" tunnel="yes"/>
+		<xsl:param name="language" as="xs:string" tunnel="yes"/>
+		<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+			<xsl:with-param name="driver" select="eno:append-empty-element('driver-Global', .)" tunnel="yes"/>
+		</xsl:apply-templates>
 	</xsl:template>
 
 	<xsl:template match="driver-Global//Module | driver-Global//SubModule" mode="model">
@@ -77,11 +89,17 @@
 		</Child>
 	</xsl:template>
 
-	<xsl:template match="driver-Global//QuestionSimple" mode="model">
+	<xsl:template match="driver-Global//QuestionSimple | driver-Global//QuestionSingleChoice" mode="model">
 		<xsl:param name="source-context" as="item()" tunnel="yes"/>
 		<xsl:param name="language" as="xs:string" tunnel="yes"/>
 		<xsl:variable name="id" select="enopogues:get-name($source-context)"/>
-		<Child id="{$id}" questionType="SIMPLE" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="QuestionType">
+		<xsl:variable name="typeQuest">
+			<xsl:choose>
+				<xsl:when test="self::QuestionSimple">SIMPLE</xsl:when>
+				<xsl:otherwise>SINGLE_CHOICE</xsl:otherwise>
+			</xsl:choose>
+		</xsl:variable>
+		<Child id="{$id}" questionType="{$typeQuest}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="QuestionType">
 			<Name><xsl:value-of select="enopogues:get-question-name($source-context,$language)"/></Name>
 			<Label><xsl:value-of select="normalize-space(substring-after(enopogues:get-label($source-context,$language), '.'))"/></Label>
 			<TargetMode>---no-source-found!---</TargetMode>
@@ -159,6 +177,20 @@
 		</Mapping>
 	</xsl:template>
 
+	<xsl:template match="CodeDomain" mode="model">
+		<xsl:param name="source-context" as="item()" tunnel="yes"/>
+		<xsl:variable name="id" select="substring-after(enopogues:get-name($source-context),'QOP-')"/>
+		<Response id="{$id}">
+			<xsl:attribute name="mandatory" select="enopogues:is-required($source-context)"/>
+			<CodeListReference><xsl:value-of select="enopogues:get-codelist-id($source-context)"/></CodeListReference>
+			<Datatype typeName="TEXT" visualizationHint="CHECKBOX" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="TextDatatypeType">
+				<MaxLength>1</MaxLength>
+				<Pattern>---- TODO -----</Pattern>
+			</Datatype>
+			<CollectedVariableReference>---- TODO -----</CollectedVariableReference>
+		</Response>
+	</xsl:template>
+
 	<xsl:template match="TextDomain | DateTimeDomain | NumericDomain" mode="model">
 		<xsl:param name="source-context" as="item()" tunnel="yes"/>
 		<!--<xsl:param name="id-question" as="xs:string" tunnel="yes"/>-->
@@ -201,12 +233,46 @@
 	</xsl:template>
 
 
-	<xsl:template match="driver-Component//Module | driver-Component//SubModule | driver-Component//QuestionItem | driver-Component//QuestionGrid">
+	<xsl:template match="driver-Component//Module | driver-Component//SubModule | driver-Component//Loop"  mode="model">
+		<xsl:param name="source-context" as="item()" tunnel="yes"/>
+		<xsl:if test="name()!='Loop'">
+			<MemberReference><xsl:value-of select="enopogues:get-name($source-context)"/></MemberReference>
+		</xsl:if>
+		<!-- Sub Element -->
+		<xsl:choose>
+			<xsl:when test="name()!='Loop'">
+				<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+					<xsl:with-param name="driver" select="eno:append-empty-element('driver-SubComponent', .)" tunnel="yes"/>
+				</xsl:apply-templates>
+			</xsl:when>
+			<xsl:otherwise>
+				<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+					<xsl:with-param name="driver" select="eno:append-empty-element('driver-LoopComponent', .)" tunnel="yes"/>
+				</xsl:apply-templates>
+			</xsl:otherwise>
+		</xsl:choose>
+	</xsl:template>
+
+	<xsl:template match="driver-LoopComponent//Module | driver-LoopComponent//SubModule"  mode="model">
+		<xsl:param name="source-context" as="item()" tunnel="yes"/>
+		<MemberReference><xsl:value-of select="enopogues:get-name($source-context)"/></MemberReference>
+
+		<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+			<xsl:with-param name="driver" select="eno:append-empty-element('driver-SubComponent', .)" tunnel="yes"/>
+		</xsl:apply-templates>
+	</xsl:template>
+
+	<xsl:template match="driver-SubComponent//QuestionDynamicTable | driver-SubComponent//QuestionSimple | driver-SubComponent//QuestionSingleChoice"  mode="model">
 		<xsl:param name="source-context" as="item()" tunnel="yes"/>
 		<MemberReference><xsl:value-of select="enopogues:get-name($source-context)"/></MemberReference>
 	</xsl:template>
 
-	<xsl:template match="driver-VariableScheme//CollectedVariable">
+	<xsl:template match="driver-LoopMember//Module | driver-LoopMember//SubModule "  mode="model">
+		<xsl:param name="source-context" as="item()" tunnel="yes"/>
+		<MemberReference><xsl:value-of select="enopogues:get-name($source-context)"/></MemberReference>
+	</xsl:template>
+
+	<xsl:template match="driver-VariableScheme//ExternalVariable | driver-VariableScheme//CalculatedVariable | driver-VariableScheme//CollectedVariable"  mode="model">
 		<xsl:param name="source-context" as="item()" tunnel="yes"/>
 		<xsl:param name="language" as="xs:string" tunnel="yes"/>
 		<xsl:variable name="id" select="enopogues:get-variable-id($source-context)"/>
@@ -219,6 +285,21 @@
 			<Name><xsl:value-of select="enopogues:get-name($source-context)"/></Name>
 			<Label><xsl:value-of select="enopogues:get-label($source-context,$language)"/></Label>
 		</Variable>
+	</xsl:template>
+
+	<xsl:template match="driver-Loop//Loop" mode="model">
+		<xsl:param name="source-context" as="item()" tunnel="yes"/>
+		<xsl:param name="language" as="xs:string" tunnel="yes"/>
+		<xsl:variable name="id" select="enopogues:get-name($source-context)"/>
+		<Iteration id="{$id}"  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="---- TODO -------">
+			<Name><xsl:value-of select="enopogues:get-business-name($source-context)"/></Name>
+			<Label><xsl:value-of select="enopogues:get-label($source-context,$language)"/></Label>
+			<!-- MemberReference -->
+			<xsl:apply-templates select="eno:child-fields($source-context)" mode="source">
+				<xsl:with-param name="driver" select="eno:append-empty-element('driver-LoopMember', .)" tunnel="yes"/>
+			</xsl:apply-templates>
+			<IterableReference>---no-source-found!---</IterableReference>
+		</Iteration>
 	</xsl:template>
 
 </xsl:stylesheet>
